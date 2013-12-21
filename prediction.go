@@ -2,8 +2,8 @@
 package main
 
 import (
-	"math"
 	"github.com/jlouis/glocko2"
+	"math"
 )
 
 var (
@@ -13,13 +13,6 @@ var (
 type match struct {
 	winner string
 	loser  string
-}
-
-type configuration struct {
-	initR		float64
-	initRd	float64
-	initSigma	float64
-	tau		float64
 }
 
 func rateGame(y float64, e float64) float64 {
@@ -35,40 +28,36 @@ func expectedScore(w glocko2.Player, l glocko2.Player) float64 {
 	return 1.0 / (1.0 + math.Pow(10, -gVal*(w.R-l.R)/400.0))
 }
 
-func predictMatches(db map[string]int, ps []glocko2.Player, ms []match) float64 {
-	r := make([]float64, len(ms))
-
-	for i, m := range ms {
-		r[i] = expectedScore(ps[ db[m.winner] ], ps [ db[m.loser] ])
-	}
-
-	n := float64(len(r))
+func predictMatches(db map[string]int, ps []glocko2.Player, ms <-chan []int) float64 {
+	n := 0
 	s := 0.0
-	for _, e := range r {
+	for m := range ms {
+		e := expectedScore(ps[m[0]], ps[m[1]])
 		s += rateGame(1, e)
+		n++
 	}
-	return (s / n)
+
+	return (s / float64(n))
 }
 
-/*
-func rank(ts []tournament, ps []player, config configuration) float64 {
+func predict(ts []tournament, ps []glocko2.Player, config Conf) float64 {
 	n := len(ts)
-	splitPoint := n - 1
-	
-	// ps = Rank(ts[0:sp], ps, config)
-	return predictMatches(db, ps, ts.Matches(i))
-}
-*/
 
-func constrain(v []float64) []float64 {
-	return []float64{ clamp(1200, v[0], 2000), clamp(50, v[1], 450), clamp(0.04, v[2], 0.09), clamp(0.1, v[3], 1.5) }
+	rank(ts[0:n-1], ps, config.Tau)
+	return predictMatches(playerName, ps, tourneyMatches(n-1))
 }
 
-/*
-func mkOptFun(ts []tournament, ps []glocko2.Player) {
+func constrain(v []float64) {
+	v[0] = clamp(1200, v[0], 2500)
+	v[1] = clamp(50, v[1], 450)
+	v[2] = clamp(0.04, v[2], 0.1)
+	v[3] = clamp(0.1, v[3], 1.5)
+}
+
+func mkOptFun(ts []tournament, ps []glocko2.Player) func([]float64) float64 {
 	return func(v []float64) float64 {
-		c := configuration{v[0], v[1], v[2], v[3]}
-		return rank(ts, ps, c)
+		c := Conf{v[0], v[1], v[2], v[3]}
+		cps := configPlayers(ps, c)
+		return predict(ts, cps, c)
 	}
 }
-*/

@@ -5,13 +5,16 @@ import (
 	"fmt"
 	_ "github.com/bmizerany/pq"
 	"github.com/jlouis/glocko2"
+	"github.com/jlouis/nmoptim"
+	"sync"
 )
 
 // Conf is a configuration object
 type Conf struct {
-	initR	float64
-	initRd float64
-	initSigma float64
+	R     float64
+	Rd    float64
+	Sigma float64
+	Tau   float64
 }
 
 // playerScratch is a temporary scratch-pad to track new rankings for a given tournament
@@ -43,56 +46,58 @@ func clamp(low float64, v float64, high float64) float64 {
 	}
 }
 
-// rank() ranks players for all matches
-func rank(ts []tournament, ps []glocko2.Player) {
+func rankChunk(ti int, lo int, hi int, ps []glocko2.Player, scratch []playerScratch, tau float64) {
+	for i := lo; i < hi; i++ {
+		player := ps[i]
 
-	ranked := 0
-	activated := 0
+		opponents := matches[i][ti]
+		if opponents == nil {
+			if player.Active {
+				mu, phi := glocko2.Scale(player.R, player.Rd)
+				phi = glocko2.PhiStar(player.Sigma, phi)
+				_, phi = glocko2.Unscale(mu, phi)
+				player.Rd = phi
+			}
+
+			scratch[i].r, scratch[i].rd, scratch[i].sigma = player.R, player.Rd, player.Sigma
+		} else {
+			r, rd, sigma := player.Rank(opponents, ps, tau)
+			if player.Active == false {
+				ps[i].Active = true
+			}
+			scratch[i].r = clamp(0, r, 3000)
+			scratch[i].rd = clamp(0, rd, 400)
+			scratch[i].sigma = clamp(0, sigma, 0.1)
+		}
+	}
+}
+
+// rank() ranks players for all matches
+func rank(ts []tournament, ps []glocko2.Player, tau float64) {
+	var wg sync.WaitGroup
 
 	scratch := make([]playerScratch, len(ps))
 
 	for ti := range ts {
-		fmt.Printf("Ranking: %v", ti)
-		for pi, player := range ps {
-			if pi%1000 == 0 {
-				fmt.Printf(".")
-			}
-			opponents := matches[pi][ti]
-			/*
-			if player.Name == "rapha" {
-				fmt.Printf("Tournament %v\n", ti)
-				fmt.Printf("  Opponents:\n")
-				for _, o := range(opponents) {
-					fmt.Printf("    %v Score: %v\n", ps[o.Idx].Name, o.Sj)
-				}
-			}
-			*/
-			if opponents == nil {
-				if player.Active {
-					mu, phi := glocko2.Scale(player.R, player.Rd)
-					phi = glocko2.PhiStar(player.Sigma, phi)
-					_, phi = glocko2.Unscale(mu, phi)
-					player.Rd = phi
-				}
-				scratch[pi].r, scratch[pi].rd, scratch[pi].sigma = player.R, player.Rd, player.Sigma
+		for i := 0; i < len(ps); i += 5000 {
+			lo := i
+			var hi int
+			if i+5000 < len(ps) {
+				hi = i + 5000
 			} else {
-				r, rd, sigma := player.Rank(opponents, ps)
-				if player.Active == false {
-					ps[pi].Active = true
-					activated++
-				}
-				ranked++
-				scratch[pi].r = clamp(0, r, 3000)
-				scratch[pi].rd = clamp(0, rd, 400)
-				scratch[pi].sigma = clamp(0, sigma, 0.1)
+				hi = len(ps)
 			}
+
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+
+				rankChunk(ti, lo, hi, ps, scratch, tau)
+			}()
 		}
-		fmt.Printf("x\n")
+
+		wg.Wait()
 		closeRound(scratch, ps)
-		fmt.Printf("Ranked %v playes and activated %v new players\n", ranked, activated)
-		activated = 0
-		ranked = 0
-		fmt.Printf("Rapha's strength: %v\n", ps[playerName["rapha"]])
 	}
 }
 
@@ -180,7 +185,7 @@ func addMatch(t int, winner string, loser string, m string) {
 	matches[li][t] = append(matches[li][t], glocko2.Opponent{wi, 0.0})
 }
 
-func getPlayers(db *sql.DB, c *Conf) []glocko2.Player {
+func getPlayers(db *sql.DB) []glocko2.Player {
 	players := make([]glocko2.Player, 0, initialPlayerCount)
 	rows, err := db.Query("SELECT id, name FROM player")
 	if err != nil {
@@ -193,13 +198,13 @@ func getPlayers(db *sql.DB, c *Conf) []glocko2.Player {
 			panic(err)
 		}
 
-		players = append(players, glocko2.Player{id, name, c.initR, c.initRd, c.initSigma, false})
+		players = append(players, glocko2.Player{id, name, 0.0, 0.0, 0.0, false})
 	}
 
 	return players
 }
 
-func runRank(c Conf) {
+func setup() ([]tournament, []glocko2.Player, [][][]glocko2.Opponent) {
 	playerMap = make(map[string]int)
 	playerName = make(map[string]int)
 
@@ -212,7 +217,7 @@ func runRank(c Conf) {
 
 	ts := getTournaments(db)
 
-	ps := getPlayers(db, &c)
+	ps := getPlayers(db)
 	for i := range ps {
 		id := ps[i].Id
 		name := ps[i].Name
@@ -230,9 +235,50 @@ func runRank(c Conf) {
 		getMatches(db, ts[i].id)
 	}
 
-	rank(ts, ps)
+	return ts, ps, matches
+}
+
+func configPlayers(ps []glocko2.Player, c Conf) []glocko2.Player {
+	r := make([]glocko2.Player, len(ps))
+	copy(r, ps)
+
+	for i := range ps {
+		r[i].R = c.R
+		r[i].Rd = c.Rd
+		r[i].Sigma = c.Sigma
+		r[i].Active = false
+	}
+
+	return r
+}
+
+func tourneyMatches(t int) chan []int {
+	c := make(chan []int)
+
+	go func() {
+		for pi := range matches {
+			for _, opp := range matches[pi][t] {
+				if opp.Sj == 1.0 {
+					c <- []int{pi, opp.Idx}
+				}
+			}
+		}
+		close(c)
+	}()
+	return c
 }
 
 func main() {
-	runRank(Conf{1500.0, 350.0, 0.06})
+	ts, ps, _ := setup()
+	c := Conf{1500.0, 450.0, 0.06, 0.5}
+	cps := configPlayers(ps, c)
+	v := predict(ts, cps, c)
+
+	raphaIdx := playerName["rapha"]
+	fmt.Printf("Prediction: %v Strength of Rapha: %v\n", v, cps[raphaIdx])
+
+	start := [][]float64{{1500.0, 350.0, 0.06, 0.5}, {1200.0, 100.0, 0.04, 0.2}, {1500.0, 400.0, 0.07, 1.2}, {1200.0, 50.0, 0.04, 0.1}, {2000.0, 450.0, 0.09, 1.5}}
+	f := mkOptFun(ts, ps)
+	vals, iters, evals := nmoptim.Optimize(f, start, constrain)
+	fmt.Printf("Optimized to %v in %v iterations and %v evaluations\n", vals, iters, evals)
 }
