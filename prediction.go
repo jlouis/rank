@@ -15,7 +15,8 @@ type match struct {
 	loser  string
 }
 
-func rateGame(y float64, e float64) float64 {
+func rateGame(y float64, expected float64) float64 {
+	e := clamp(0.01, expected, 0.99)
 	return -(y*math.Log10(e) + (1.0-y)*math.Log10(1.0-e))
 }
 
@@ -48,15 +49,13 @@ func predict(ts []tournament, ps []glocko2.Player, config Conf) float64 {
 }
 
 func constrain(v []float64) {
-	v[0] = clamp(1200, v[0], 2500)
-	v[1] = clamp(50, v[1], 450)
-	v[2] = clamp(0.04, v[2], 0.1)
-	v[3] = clamp(0.1, v[3], 1.5)
+	v[0] = clamp(50, v[0], 450)
+	v[1] = clamp(0.1, v[1], 1.5)
 }
 
 func mkOptFun(ts []tournament, ps []glocko2.Player) func([]float64) float64 {
 	return func(v []float64) float64 {
-		c := Conf{v[0], v[1], v[2], v[3]}
+		c := Conf{1200, v[0], 0.06, v[1]}
 		cps := configPlayers(ps, c)
 		return predict(ts, cps, c)
 	}

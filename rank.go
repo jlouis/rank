@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"flag"
 	"fmt"
 	_ "github.com/bmizerany/pq"
 	"github.com/jlouis/glocko2"
@@ -34,6 +35,10 @@ var (
 	playerName map[string]int // Mapping from the player name → index position in the slice
 
 	matches [][][]glocko2.Opponent
+
+	topPlayers []string = []string{"rapha", "Cypher", "DaHanG", "evil", "k1llsen", "nhd", "tox", "Av3k", "Fraze", "_ash", "Cooller"}
+
+	optimize = flag.Bool("optimize", false, "run prediction code for optimization")
 )
 
 func clamp(low float64, v float64, high float64) float64 {
@@ -269,16 +274,25 @@ func tourneyMatches(t int) chan []int {
 }
 
 func main() {
+	flag.Parse()
+
 	ts, ps, _ := setup()
-	c := Conf{1500.0, 450.0, 0.06, 0.5}
+	c := Conf{1200, 325, 0.06, 0.1}
 	cps := configPlayers(ps, c)
-	v := predict(ts, cps, c)
+	predict(ts, cps, c)
 
-	raphaIdx := playerName["rapha"]
-	fmt.Printf("Prediction: %v Strength of Rapha: %v\n", v, cps[raphaIdx])
+	for _, ply := range topPlayers {
+		fmt.Printf("%v → %v\n", ply, cps[playerName[ply]])
+	}
 
-	start := [][]float64{{1500.0, 350.0, 0.06, 0.5}, {1200.0, 100.0, 0.04, 0.2}, {1500.0, 400.0, 0.07, 1.2}, {1200.0, 50.0, 0.04, 0.1}, {2000.0, 450.0, 0.09, 1.5}}
-	f := mkOptFun(ts, ps)
-	vals, iters, evals := nmoptim.Optimize(f, start, constrain)
-	fmt.Printf("Optimized to %v in %v iterations and %v evaluations\n", vals, iters, evals)
+	if *optimize {
+		start := [][]float64{
+			{350.0, 0.5},
+			{150.0, 0.8},
+			{400.0, 0.1}}
+		f := mkOptFun(ts, ps)
+		vals, iters, evals := nmoptim.Optimize(f, start, constrain)
+		fmt.Printf("Optimized to %v in %v iterations and %v evaluations\n", vals, iters, evals)
+	}
+
 }
