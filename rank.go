@@ -27,7 +27,7 @@ func rankChunk(ti int, lo int, hi int, ps []player, scratch []playerScratch, tau
 
 			scratch[i].r, scratch[i].rd, scratch[i].sigma = player.r, player.rd, player.sigma
 		} else {
-			r, rd, sigma := glicko2.Rank(player.r, player.rd, player.sigma, opponents, tau)
+			r, rd, sigma := glicko2.Rank(player.r, player.rd, player.sigma, []glicko2.Opponent(opponents), tau)
 			if player.active == false {
 				ps[i].active = true
 			}
@@ -45,6 +45,8 @@ func rank(ts []tournament, ps []player, tau float64) {
 	scratch := make([]playerScratch, len(ps))
 
 	for ti := range ts {
+		players = ps
+		
 		for i := 0; i < len(ps); i += 5000 {
 			lo := i
 			var hi int

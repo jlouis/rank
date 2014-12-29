@@ -51,6 +51,7 @@ var (
 	playerId  map[string]int // Mapping from the player UUID → index position in the slice
 	playerName map[string]int // Mapping from the player name → index position in the slice
 
+	players []player // Global list of players
 	matches [][][]duel // [p][t] → []duel mapping, where p is a player index and t is a tournament number
 
 	topPlayers []string = []string{"rapha", "Cypher", "DaHanG", "evil", "k1llsen", "nhd", "tox", "Av3k", "Fraze", "_ash", "Cooller"}
@@ -65,6 +66,22 @@ var (
 
 	optimize = flag.Bool("optimize", false, "run prediction code for optimization")
 )
+
+func (d duel) R() float64 {
+	return players[d.opponent].r
+}
+
+func (d duel) RD() float64 {
+	return players[d.opponent].rd
+}
+
+func (d duel) Sigma() float64 {
+	return players[d.opponent].sigma
+}
+
+func (d duel) SJ() float64 {
+	return d.outcome
+}
 
 // dbConnect connects us to the database via command line flags
 func dbConnect() *sql.DB {
@@ -207,7 +224,8 @@ func main() {
 	flag.Parse()
 
 	log.Print("=== INITIALIZE")
-	ts, ps, matches := initialize()
+	ts, ps, ms := initialize()
+	matches = ms
 	log.Print("=== PREDICT")
 	c := conf{1200, 264, 0.06, 0.26}
 	cps := configPlayers(ps, c)
