@@ -1,35 +1,16 @@
-// prediction code
 package main
-
-import (
-	"github.com/jlouis/glocko2"
-	"math"
-)
-
-var (
-	q = math.Log(10) / 400
-)
 
 type match struct {
 	winner string
 	loser  string
 }
 
-func rateGame(y float64, expected float64) float64 {
-	e := clamp(0.01, expected, 0.99)
-	return -(y*math.Log10(e) + (1.0-y)*math.Log10(1.0-e))
+type matchx struct {
+	w player
+	l player
 }
 
-func expectedG(rd float64) float64 {
-	return 1 / (math.Sqrt(1.0 + 3.0*q*q*rd*rd/(math.Pi*math.Pi)))
-}
-
-func expectedScore(w glocko2.Player, l glocko2.Player) float64 {
-	gVal := expectedG(math.Sqrt(w.Rd*w.Rd + l.Rd*l.Rd))
-	return 1.0 / (1.0 + math.Pow(10, -gVal*(w.R-l.R)/400.0))
-}
-
-func predictMatches(db map[string]int, ps []glocko2.Player, ms <-chan []int) float64 {
+func predictMatches(db map[string]int, ps []player, ms <-chan []int) float64 {
 	n := 0
 	s := 0.0
 	for m := range ms {
@@ -41,22 +22,25 @@ func predictMatches(db map[string]int, ps []glocko2.Player, ms <-chan []int) flo
 	return (s / float64(n))
 }
 
-func predict(ts []tournament, ps []glocko2.Player, config Conf) float64 {
+func tourneyMatches(t int) chan []int {
+	c := make(chan []int)
+
+	go func() {
+		for pi := range matches {
+			for _, duel := range matches[pi][t] {
+				if duel.outcome == 1.0 {
+					c <- []int{pi, duel.opponent}
+				}
+			}
+		}
+		close(c)
+	}()
+	return c
+}
+
+func predict(ts []tournament, ps []player, config conf) float64 {
 	n := len(ts)
 
-	rank(ts[0:n-1], ps, config.Tau)
+	rank(ts[0:n-1], ps, config.tau)
 	return predictMatches(playerName, ps, tourneyMatches(n-1))
-}
-
-func constrain(v []float64) {
-	v[0] = clamp(50, v[0], 450)
-	v[1] = clamp(0.1, v[1], 1.5)
-}
-
-func mkOptFun(ts []tournament, ps []glocko2.Player) func([]float64) float64 {
-	return func(v []float64) float64 {
-		c := Conf{1200, v[0], 0.06, v[1]}
-		cps := configPlayers(ps, c)
-		return predict(ts, cps, c)
-	}
 }
