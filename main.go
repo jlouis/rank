@@ -7,36 +7,44 @@ import (
 	"log"
 
 	_ "github.com/bmizerany/pq"
+	"github.com/jlouis/glicko2"
+	"github.com/jlouis/nmoptim"
 )
 
+// Representation of players in memory. We simply store the important values directly in a flat struct
 type player struct {
-	id string
-	name string
-	r	float64
-	rd	float64
-	sigma	float64
-	active	bool
+	id     string
+	name   string
+	r      float64
+	rd     float64
+	sigma  float64
+	active bool
 }
 
+// Duels represent duel matches. The player for which the duel pertains is implicit. We only track the
+// index of the opponent and the outcome of the match (1.0 is a win, 0.0 is a loss).
 type duel struct {
-	opponent	int
-	outcome	float64
+	opponent int
+	outcome  float64
 }
 
+// Tournaments have a counter which represents their number in order
 type tournament struct {
 	id int
 }
 
 // Conf is a configuration object
+// It tracks the configuration of the players.
 type conf struct {
-	r     float64
-	rd    float64
-	sigma float64
-	tau   float64
+	r     float64 // starting rating for new players
+	rd    float64 // starting rating deviation for new players
+	sigma float64 // starting volatility (σ) for new players
+	tau   float64 // The τ value used in the computations
 }
 
 // playerScratch is a temporary scratch-pad to track new rankings for a given tournament
-// we move these stats into the right structure when the tournament round is over
+// we move these stats into the right structure when the tournament round is over.
+// We do this to avoid overwriting the current ratings while processing a new tournament.
 type playerScratch struct {
 	r     float64
 	rd    float64
@@ -48,23 +56,24 @@ const (
 )
 
 var (
-	playerId  map[string]int // Mapping from the player UUID → index position in the slice
+	playerID   map[string]int // Mapping from the player UUID → index position in the slice
 	playerName map[string]int // Mapping from the player name → index position in the slice
 
-	players []player // Global list of players
-	matches [][][]duel // [p][t] → []duel mapping, where p is a player index and t is a tournament number
+	players []player               // Global list of players
+	matches [][][]glicko2.Opponent // [p][t] → []duel mapping, where p is a player index and t is a tournament number
 
-	topPlayers []string = []string{"rapha", "Cypher", "DaHanG", "evil", "k1llsen", "nhd", "tox", "Av3k", "Fraze", "_ash", "Cooller"}
+	topPlayers = []string{"rapha", "Cypher", "DaHanG", "evil", "k1llsen", "nhd", "tox", "Av3k", "Fraze", "_ash", "Cooller"}
 )
 
 // The flags to the application have their separate variable section
 var (
-	dbUser = flag.String("user", "qlglicko_rank", "database user to connect as")
+	dbUser   = flag.String("user", "qlglicko_rank", "database user to connect as")
 	dbPasswd = flag.String("passwd", "'AAAAAAAAAAAAAAAAAaaaaaaaaaaaaaaaaand-OPEN!'", "database password to use")
-	dbName = flag.String("db", "qlglicko", "database to connect to")
-	dbHost = flag.String("host", "192.168.1.201", "the host to connect to")
+	dbName   = flag.String("db", "qlglicko", "database to connect to")
+	dbHost   = flag.String("host", "192.168.1.201", "the host to connect to")
 
-	optimize = flag.Bool("optimize", false, "run prediction code for optimization")
+	tournamentCount = flag.Int("tourneys", 10, "how many tournaments to process")
+	optimize        = flag.Bool("optimize", false, "run prediction code for optimization")
 )
 
 func (d duel) R() float64 {
@@ -95,16 +104,16 @@ func dbConnect() *sql.DB {
 }
 
 func addMatch(t int, winner string, loser string, m string) {
-	wi := playerId[winner]
-	li := playerId[loser]
+	wi := playerID[winner]
+	li := playerID[loser]
 
 	if matches[wi][t] == nil {
-		matches[wi][t] = make([]duel, 0)
+		matches[wi][t] = make([]glicko2.Opponent, 0)
 	}
 	matches[wi][t] = append(matches[wi][t], duel{opponent: li, outcome: 1.0})
 
 	if matches[li][t] == nil {
-		matches[li][t] = make([]duel, 0)
+		matches[li][t] = make([]glicko2.Opponent, 0)
 	}
 	matches[li][t] = append(matches[li][t], duel{opponent: wi, outcome: 0.0})
 }
@@ -129,7 +138,7 @@ func readMatches(db *sql.DB, t int) {
 
 func readTournaments(db *sql.DB) []tournament {
 	result := make([]tournament, 0, 250)
-	rows, err := db.Query("SELECT id FROM tournament ORDER BY t_from ASC")
+	rows, err := db.Query("SELECT id FROM tournament ORDER BY t_from ASC LIMIT $1", *tournamentCount)
 	if err != nil {
 		panic(err)
 	}
@@ -166,8 +175,8 @@ func getPlayers(db *sql.DB) []player {
 }
 
 // initialize will set up initial data structures needed to carry out the computations
-func initialize() ([]tournament, []player, [][][]duel) {
-	playerId = make(map[string]int)
+func initialize() ([]tournament, []player, [][][]glicko2.Opponent) {
+	playerID = make(map[string]int)
 	playerName = make(map[string]int)
 
 	db := dbConnect()
@@ -187,13 +196,13 @@ func initialize() ([]tournament, []player, [][][]duel) {
 	for i := range ps {
 		id := ps[i].id
 		name := ps[i].name
-		playerId[id] = i
+		playerID[id] = i
 		playerName[name] = i
 	}
 
-	matches = make([][][]duel, len(ps))
+	matches = make([][][]glicko2.Opponent, len(ps))
 	for i := range matches {
-		matches[i] = make([][]duel, len(ts))
+		matches[i] = make([][]glicko2.Opponent, len(ts))
 	}
 
 	for i := range ts {
@@ -204,21 +213,34 @@ func initialize() ([]tournament, []player, [][][]duel) {
 	return ts, ps, matches
 }
 
-
 func configPlayers(ps []player, c conf) []player {
-       r := make([]player, len(ps))
-       copy(r, ps)
+	r := make([]player, len(ps))
+	copy(r, ps)
 
-       for i := range ps {
-               r[i].r = c.r
-               r[i].rd = c.rd
-               r[i].sigma = c.sigma
-               r[i].active = false
-       }
- 
-       return r
+	for i := range ps {
+		r[i].r = c.r
+		r[i].rd = c.rd
+		r[i].sigma = c.sigma
+		r[i].active = false
+	}
+
+	return r
 }
 
+// constrain will bound the optimization simplex to sensible values
+func constrain(v []float64) {
+	v[0] = clamp(50, v[0], 450)
+	v[1] = clamp(0.1, v[1], 1.5)
+}
+
+// mkOptFun creates the optimization function which is used to optimize the results
+func mkOptFun(ts []tournament, ps []player) func([]float64) float64 {
+	return func(v []float64) float64 {
+		c := conf{1200, v[0], 0.06, v[1]}
+		cps := configPlayers(ps, c)
+		return predict(ts, cps, c)
+	}
+}
 
 func main() {
 	flag.Parse()
@@ -231,18 +253,17 @@ func main() {
 	cps := configPlayers(ps, c)
 	predict(ts, cps, c)
 
-//	for _, ply := range topPlayers {
-//		fmt.Printf("%v → %v\n", ply, cps[playerName[ply]])
-//	}
+	for _, ply := range topPlayers {
+		fmt.Printf("%v → %v\n", ply, cps[playerName[ply]])
+	}
 
-//	if *optimize {
-//		start := [][]float64{
-//			{350.0, 0.5},
-//			{150.0, 0.8},
-//			{400.0, 0.1}}
-//		f := mkOptFun(ts, ps)
-//		vals, iters, evals := nmoptim.Optimize(f, start, constrain)
-//		fmt.Printf("Optimized to %v in %v iterations and %v evaluations\n", vals, iters, evals)
-//	}
-
+	if *optimize {
+		start := [][]float64{
+			{350.0, 0.5},
+			{150.0, 0.8},
+			{400.0, 0.1}}
+		f := mkOptFun(ts, ps)
+		vals, iters, evals := nmoptim.Optimize(f, start, constrain)
+		fmt.Printf("Optimized to %v in %v iterations and %v evaluations\n", vals, iters, evals)
+	}
 }

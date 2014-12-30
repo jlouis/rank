@@ -1,13 +1,9 @@
 package main
 
-import (
-	"math"
-)
-
-var (
-	q = math.Log(10) / 400
-)
-
+// clamp bounds a floating64 point value from above and below
+// If the value is less than low, low is returned. If the value is higher than high, then high is returned.
+// Otherwise the clamp returns the value.
+// We use this to bound certain movements in order to avoid moving to silly values.
 func clamp(low float64, v float64, high float64) float64 {
 	if v < low {
 		return low
@@ -16,18 +12,4 @@ func clamp(low float64, v float64, high float64) float64 {
 	} else {
 		return v
 	}
-}
-
-func rateGame(y float64, expected float64) float64 {
-	e := clamp(0.01, expected, 0.99)
-	return -(y*math.Log10(e) + (1.0-y)*math.Log10(1.0-e))
-}
-
-func expectedG(rd float64) float64 {
-	return 1 / (math.Sqrt(1.0 + 3.0*q*q*rd*rd/(math.Pi*math.Pi)))
-}
-
-func expectedScore(w, l player) float64 {
-	gVal := expectedG(math.Sqrt(w.r*w.r + l.rd*l.rd))
-	return 1.0 / (1.0 + math.Pow(10, -gVal*(w.r-l.r)/400.0))
 }

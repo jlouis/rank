@@ -2,7 +2,7 @@ package main
 
 import (
 	"sync"
-	
+
 	"github.com/jlouis/glicko2"
 )
 
@@ -46,7 +46,7 @@ func rank(ts []tournament, ps []player, tau float64) {
 
 	for ti := range ts {
 		players = ps
-		
+
 		for i := 0; i < len(ps); i += 5000 {
 			lo := i
 			var hi int
@@ -68,4 +68,3 @@ func rank(ts []tournament, ps []player, tau float64) {
 		closeRound(scratch, ps)
 	}
 }
-
