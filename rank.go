@@ -79,6 +79,8 @@ func writeTournament(i int, players []player) {
                 if p.active {
                     fields := []string{
                             strconv.Itoa(i),
+                            p.name,
+                            "ZTN",
                             strconv.FormatFloat(p.r, 'e', 6, 64),
                             strconv.FormatFloat(p.rd, 'e', 6, 64),
                             strconv.FormatFloat(p.sigma, 'e', 6, 64),
