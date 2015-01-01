@@ -282,7 +282,9 @@ func main() {
 		log.Printf("Optimized to %v in %v iterations and %v evaluations. Took %v\n", vals, iters, evals, elapsed)
 	}
 
+        log.Print("=== FLUSHING")
 	if *csvFile != "" {
 		<-doneChan
 	}
+        log.Print("=== DONE")
 }
