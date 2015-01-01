@@ -30,6 +30,7 @@ func initWriter() (chan<- []string, chan interface{}) {
 		writer := csv.NewWriter(bf)
 		for fields := range c {
 			writer.Write(fields)
+
 		}
 
 		doneChan <- nil

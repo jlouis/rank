@@ -284,6 +284,7 @@ func main() {
 
         log.Print("=== FLUSHING")
 	if *csvFile != "" {
+                close(writeChan)
 		<-doneChan
 	}
         log.Print("=== DONE")
