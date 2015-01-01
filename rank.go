@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strconv"
 	"sync"
 
 	"github.com/jlouis/glicko2"
@@ -66,5 +67,23 @@ func rank(ts []tournament, ps []player, tau float64) {
 
 		wg.Wait()
 		closeRound(scratch, ps)
+		if *csvFile != "" {
+			writeTournament(ti, ps)
+		}
+	}
+}
+
+func writeTournament(i int, players []player) {
+	for pi := range players {
+		p := players[pi]
+
+		fields := []string{
+			strconv.Itoa(i),
+			strconv.FormatFloat(p.r, 'e', 6, 64),
+			strconv.FormatFloat(p.rd, 'e', 6, 64),
+			strconv.FormatFloat(p.sigma, 'e', 6, 64),
+		}
+
+		writeChan <- fields
 	}
 }

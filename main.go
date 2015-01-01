@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"time"
 
 	_ "github.com/bmizerany/pq"
 	"github.com/jlouis/glicko2"
@@ -74,6 +75,7 @@ var (
 
 	tournamentCount = flag.Int("tourneys", 10, "how many tournaments to process")
 	optimize        = flag.Bool("optimize", false, "run prediction code for optimization")
+	csvFile         = flag.String("outfile", "", "the file to write results into")
 )
 
 func (d duel) R() float64 {
@@ -238,12 +240,22 @@ func mkOptFun(ts []tournament, ps []player) func([]float64) float64 {
 	return func(v []float64) float64 {
 		c := conf{1200, v[0], 0.06, v[1]}
 		cps := configPlayers(ps, c)
-		return predict(ts, cps, c)
+		return run(ts, cps, c)
 	}
 }
 
 func main() {
 	flag.Parse()
+
+	var doneChan chan interface{}
+
+	if *csvFile != "" {
+		if *optimize {
+			panic("Can't optimize and write CSV file at the same time")
+		}
+
+		_, doneChan = initWriter()
+	}
 
 	log.Print("=== INITIALIZE")
 	ts, ps, ms := initialize()
@@ -251,19 +263,26 @@ func main() {
 	log.Print("=== PREDICT")
 	c := conf{1200, 264, 0.06, 0.26}
 	cps := configPlayers(ps, c)
-	predict(ts, cps, c)
+	run(ts, cps, c)
 
 	for _, ply := range topPlayers {
-		fmt.Printf("%v → %v\n", ply, cps[playerName[ply]])
+		log.Printf("%v → %v\n", ply, cps[playerName[ply]])
 	}
 
 	if *optimize {
+		log.Print("=== OPTIMIZE")
 		start := [][]float64{
 			{350.0, 0.5},
 			{150.0, 0.8},
 			{400.0, 0.1}}
 		f := mkOptFun(ts, ps)
+		startTime := time.Now()
 		vals, iters, evals := nmoptim.Optimize(f, start, constrain)
-		fmt.Printf("Optimized to %v in %v iterations and %v evaluations\n", vals, iters, evals)
+		elapsed := time.Since(startTime)
+		log.Printf("Optimized to %v in %v iterations and %v evaluations. Took %v\n", vals, iters, evals, elapsed)
+	}
+
+	if *csvFile != "" {
+		<-doneChan
 	}
 }

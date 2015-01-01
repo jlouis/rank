@@ -50,7 +50,7 @@ func tourneyMatches(t int) chan []int {
 	return c
 }
 
-func predict(ts []tournament, ps []player, config conf) float64 {
+func run(ts []tournament, ps []player, config conf) float64 {
 	n := len(ts)
 
 	rank(ts[0:n-1], ps, config.tau)
