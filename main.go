@@ -80,6 +80,7 @@ var (
 
 	tournamentCount = flag.Int("tourneys", 10, "how many tournaments to process")
 	optimize        = flag.Bool("optimize", false, "run prediction code for optimization")
+	duelMap         = flag.String("map", "", "the map for which to rank. All maps if not set")
 	csvFile         = flag.String("outfile", "", "the file to write results into")
 )
 
@@ -110,7 +111,7 @@ func dbConnect() *sql.DB {
 	return conn
 }
 
-func addMatch(t int, winner string, loser string, m string) {
+func addMatch(t int, winner string, loser string) {
 	wi := playerID[winner]
 	li := playerID[loser]
 
@@ -127,18 +128,25 @@ func addMatch(t int, winner string, loser string, m string) {
 
 // readMatches reads matches from the database
 func readMatches(db *sql.DB, t int) {
-	rows, err := db.Query("SELECT winner, loser, map FROM duel_match dm, tournament t WHERE t.id = $1 AND played BETWEEN t.t_from AND t.t_to", t)
+	var rows *sql.Rows
+	var err error
+	if *duelMap == "" {
+		rows, err = db.Query("SELECT winner, loser FROM duel_match dm, tournament t WHERE t.id = $1 AND played BETWEEN t.t_from AND t.t_to", t)
+	} else {
+		rows, err = db.Query("SELECT winner, loser FROM duel_match dm, tournament t WHERE t.id = $1 AND played BETWEEN t.t_from AND t.t_to AND dm.map = $2", t, *duelMap)
+	}
+
 	if err != nil {
 		panic(err)
 	}
 
 	for rows.Next() {
-		var winner, loser, m string
-		if err := rows.Scan(&winner, &loser, &m); err != nil {
+		var winner, loser string
+		if err := rows.Scan(&winner, &loser); err != nil {
 			panic(err)
 		}
 
-		addMatch(t-1, winner, loser, m) // Matches are skewed by a count of 1
+		addMatch(t-1, winner, loser) // Matches are skewed by a count of 1
 	}
 
 }
@@ -276,7 +284,7 @@ func main() {
 	ts, ps, ms := initialize()
 	matches = ms
 	log.Print("=== PREDICT")
-	c := conf{1200, 264, 0.06, 0.26}
+	c := conf{1200, 285, 0.06, 0.59}
 	cps := configPlayers(ps, c)
 	run(ts, cps, c)
 
