@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
+	"runtime/pprof"
 	"time"
 
 	_ "github.com/bmizerany/pq"
@@ -68,6 +70,9 @@ var (
 
 // The flags to the application have their separate variable section
 var (
+	cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
+	memprofile = flag.String("memprofile", "", "write memory profile to this file")
+
 	dbUser   = flag.String("user", "qlglicko_rank", "database user to connect as")
 	dbPasswd = flag.String("passwd", "'AAAAAAAAAAAAAAAAAaaaaaaaaaaaaaaaaand-OPEN!'", "database password to use")
 	dbName   = flag.String("db", "qlglicko", "database to connect to")
@@ -247,6 +252,16 @@ func mkOptFun(ts []tournament, ps []player) func([]float64) float64 {
 func main() {
 	flag.Parse()
 
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
+
 	var doneChan chan interface{}
 
 	if *csvFile != "" {
@@ -269,6 +284,17 @@ func main() {
 		log.Printf("%v → %v\n", ply, cps[playerName[ply]])
 	}
 
+	if *memprofile != "" {
+		f, err := os.Create(*memprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		pprof.WriteHeapProfile(f)
+		f.Close()
+		return
+	}
+
 	if *optimize {
 		log.Print("=== OPTIMIZE")
 		start := [][]float64{
@@ -282,10 +308,10 @@ func main() {
 		log.Printf("Optimized to %v in %v iterations and %v evaluations. Took %v\n", vals, iters, evals, elapsed)
 	}
 
-        log.Print("=== FLUSHING")
+	log.Print("=== FLUSHING")
 	if *csvFile != "" {
-                close(writeChan)
+		close(writeChan)
 		<-doneChan
 	}
-        log.Print("=== DONE")
+	log.Print("=== DONE")
 }
