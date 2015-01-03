@@ -2,9 +2,10 @@
 
 MAPS='aerowalk battleforged bloodrun campgrounds cure furiousheights hektik houseofdecay lostworld sinister toxicity verticalvengeance'
 TOURNEYS=5
+PASSWD="$1"
 
 for i in $MAPS; do
-	./rank -outfile="results/$i" -map=$i -passwd="$1" -tourneys=$TOURNEYS;
+	./rank -outfile="results/$i" -map=$i -passwd="$PASSWD" -tourneys=$TOURNEYS;
 done
 
-./rank -outfile="results/all" -passwd="$1" -tourneys=$TOURNEYS;
+./rank -outfile="results/all" -passwd="$PASSWD" -tourneys=$TOURNEYS;
