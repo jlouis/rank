@@ -1,7 +1,7 @@
 #!/bin/sh
 
 MAPS='aerowalk battleforged bloodrun campgrounds cure furiousheights hektik houseofdecay lostworld sinister toxicity verticalvengeance'
-TOURNEYS=5
+TOURNEYS=149
 PASSWD="$1"
 
 for i in $MAPS; do
