@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"strconv"
 	"sync"
 
@@ -68,6 +69,7 @@ func rank(ts []tournament, ps []player, tau float64) {
 		wg.Wait()
 		closeRound(scratch, ps)
 		if *csvFile != "" {
+			log.Printf("Writing tournament %v", ti+1)
 			writeTournament(ti, ps)
 		}
 	}
@@ -75,6 +77,7 @@ func rank(ts []tournament, ps []player, tau float64) {
 
 func writeTournament(i int, players []player) {
 	var m string
+	id := strconv.Itoa(i + 1)
 	if *duelMap == "" {
 		m = "all"
 	} else {
@@ -85,7 +88,7 @@ func writeTournament(i int, players []player) {
 		p := players[pi]
 		if p.active {
 			fields := []string{
-				strconv.Itoa(i),
+				id,
 				p.name,
 				m,
 				strconv.FormatFloat(p.r, 'e', 6, 64),

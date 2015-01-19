@@ -167,6 +167,7 @@ func readTournaments(db *sql.DB) []tournament {
 		result = append(result, tournament{id})
 	}
 
+	log.Printf("Read %v tournaments", len(result))
 	return result
 }
 
@@ -253,7 +254,7 @@ func mkOptFun(ts []tournament, ps []player) func([]float64) float64 {
 	return func(v []float64) float64 {
 		c := conf{1200, v[0], 0.06, v[1]}
 		cps := configPlayers(ps, c)
-		return run(ts, cps, c)
+		return runPredict(ts, cps, c)
 	}
 }
 

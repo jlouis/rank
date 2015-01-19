@@ -34,14 +34,16 @@ func predictMatches(db map[string]int, ps []player, ms <-chan []int) float64 {
 	return (s / float64(n))
 }
 
-func tourneyMatches(t int) chan []int {
+func tourneyMatches(tourneys []int) chan []int {
 	c := make(chan []int)
 
 	go func() {
-		for pi := range matches {
-			for _, d := range matches[pi][t] {
-				if d.SJ() == 1.0 {
-					c <- []int{pi, d.(duel).opponent}
+		for ti := range tourneys {
+			for pi := range matches {
+				for _, d := range matches[pi][ti] {
+					if d.SJ() == 1.0 {
+						c <- []int{pi, d.(duel).opponent}
+					}
 				}
 			}
 		}
@@ -50,9 +52,13 @@ func tourneyMatches(t int) chan []int {
 	return c
 }
 
-func run(ts []tournament, ps []player, config conf) float64 {
+func runPredict(ts []tournament, ps []player, config conf) float64 {
 	n := len(ts)
 
-	rank(ts[0:n-1], ps, config.tau)
-	return predictMatches(playerName, ps, tourneyMatches(n-1))
+	rank(ts[0:n-3], ps, config.tau)
+	return predictMatches(playerName, ps, tourneyMatches([]int{n - 3, n - 2, n - 1}))
+}
+
+func run(ts []tournament, ps []player, config conf) {
+	rank(ts, ps, config.tau)
 }
