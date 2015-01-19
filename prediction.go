@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"math"
 )
 
@@ -38,15 +39,16 @@ func tourneyMatches(tourneys []int) chan []int {
 	c := make(chan []int)
 
 	go func() {
+		i := 0
 		for ti := range tourneys {
 			for pi := range matches {
 				for _, d := range matches[pi][ti] {
-					if d.SJ() == 1.0 {
-						c <- []int{pi, d.(duel).opponent}
-					}
+					c <- []int{pi, d.(duel).opponent}
+					i++
 				}
 			}
 		}
+		log.Printf("Used %v matches for optimization", i)
 		close(c)
 	}()
 	return c
