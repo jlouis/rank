@@ -15,11 +15,6 @@ import (
 	"github.com/jlouis/nmoptim"
 )
 
-var (
-	initialRD = 406.0 // Initial RD value to use for new players
-	τ         = 0.34
-)
-
 // Representation of players in memory. We simply store the important values directly in a flat struct
 type player struct {
 	id     string
@@ -89,6 +84,9 @@ var (
 	plot            = flag.Bool("plot", false, "output the 3d plot data for running")
 	duelMap         = flag.String("map", "", "the map for which to rank. All maps if not set")
 	csvFile         = flag.String("outfile", "", "the file to write results into")
+
+	initRD = flag.Float64("rd", 406.0, "The initial RD value to use")
+	τ      = flag.Float64("tau", 0.34, "The initial τ value to use")
 )
 
 func (d duel) Opponent() int {
@@ -302,7 +300,7 @@ func main() {
 	ts, ps, ms := initialize()
 	matches = ms
 	log.Print("=== PREDICT")
-	c := conf{1200, initialRD, 0.06, τ}
+	c := conf{1200, *initRD, 0.06, *τ}
 	cps := configPlayers(ps, c)
 	run(ts, cps, c)
 
