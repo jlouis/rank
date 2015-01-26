@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"database/sql"
 	"flag"
 	"fmt"
@@ -12,6 +13,11 @@ import (
 	_ "github.com/bmizerany/pq"
 	"github.com/jlouis/glicko2"
 	"github.com/jlouis/nmoptim"
+)
+
+var (
+	initialRD = 406.0 // Initial RD value to use for new players
+	τ         = 0.34
 )
 
 // Representation of players in memory. We simply store the important values directly in a flat struct
@@ -80,9 +86,14 @@ var (
 
 	tournamentCount = flag.Int("tourneys", 10, "how many tournaments to process")
 	optimize        = flag.Bool("optimize", false, "run prediction code for optimization")
+	plot            = flag.Bool("plot", false, "output the 3d plot data for running")
 	duelMap         = flag.String("map", "", "the map for which to rank. All maps if not set")
 	csvFile         = flag.String("outfile", "", "the file to write results into")
 )
+
+func (d duel) Opponent() int {
+	return d.opponent
+}
 
 func (d duel) R() float64 {
 	return players[d.opponent].r
@@ -245,8 +256,8 @@ func configPlayers(ps []player, c conf) []player {
 
 // constrain will bound the optimization simplex to sensible values
 func constrain(v []float64) {
-	v[0] = clamp(50, v[0], 450)
-	v[1] = clamp(0.1, v[1], 1.5)
+	v[0] = clamp(5, v[0], 10000)
+	v[1] = clamp(0.0001, v[1], 1.5)
 }
 
 // mkOptFun creates the optimization function which is used to optimize the results
@@ -281,11 +292,17 @@ func main() {
 		_, doneChan = initWriter()
 	}
 
+	if *plot {
+		if *optimize {
+			panic("Can't plot and optimize at the same time")
+		}
+	}
+
 	log.Print("=== INITIALIZE")
 	ts, ps, ms := initialize()
 	matches = ms
 	log.Print("=== PREDICT")
-	c := conf{1200, 285, 0.06, 0.59}
+	c := conf{1200, initialRD, 0.06, τ}
 	cps := configPlayers(ps, c)
 	run(ts, cps, c)
 
@@ -307,9 +324,9 @@ func main() {
 	if *optimize {
 		log.Print("=== OPTIMIZE")
 		start := [][]float64{
-			{350.0, 0.5},
+			{250.0, 0.5},
 			{150.0, 0.8},
-			{400.0, 0.1}}
+			{400.0, 0.65}}
 		f := mkOptFun(ts, ps)
 		startTime := time.Now()
 		vals, iters, evals := nmoptim.Optimize(f, start, constrain)
@@ -317,8 +334,30 @@ func main() {
 		log.Printf("Optimized to %v in %v iterations and %v evaluations. Took %v\n", vals, iters, evals, elapsed)
 	}
 
-	log.Print("=== FLUSHING")
+	if *plot {
+		of, err := os.Create("energy.dat")
+		if err != nil {
+			panic("Couldn't open file for writing plot output")
+		}
+
+		defer of.Close()
+
+		bf := bufio.NewWriter(of)
+		defer bf.Flush()
+		f := mkOptFun(ts, ps)
+		for rd := 10.0; rd < 600.0; rd += 10.0 {
+			for tau := 0.1; tau < 1.6; tau += 0.1 {
+				r := f([]float64{rd, tau})
+
+				fmt.Printf("Plotting coordinate (%v, %v) → %v\n", rd, tau, r)
+				fmt.Fprintf(bf, "%v\t%v\t%v\n", rd, tau, r)
+			}
+		}
+	}
+
 	if *csvFile != "" {
+		log.Print("=== FLUSHING")
+
 		close(writeChan)
 		<-doneChan
 	}
