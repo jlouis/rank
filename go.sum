@@ -1,0 +1,6 @@
+github.com/bmizerany/pq v0.0.0-20131128184720-da2b95e392c1 h1:1clOQIolnXGoH1SUo8ZPgdfOWFp/6i8NuRerrVL/TAc=
+github.com/bmizerany/pq v0.0.0-20131128184720-da2b95e392c1/go.mod h1:YR6v6TjYGQnPky7rSf5U+AiQ4+EHIVmFYbhHUPo5L2U=
+github.com/jlouis/glicko2 v1.0.0 h1:pSl/OTRclxdrhtqoqJpvO41GoUL1dmaTnxC2F6+W+y8=
+github.com/jlouis/glicko2 v1.0.0/go.mod h1:5dzlxjhVPPLk+wiUwwF2oVyDwsNXMgnw7WrLRxuejBs=
+github.com/jlouis/nmoptim v0.9.0 h1:QxaJQgQqHbwEknHo5SWzQ9x1Sbr5R4i7Fz/M6mvx/ls=
+github.com/jlouis/nmoptim v0.9.0/go.mod h1:pgrwYyP3QvlzmoAg9Y7SCjalq/rpvftcbXCh+riUEpc=
